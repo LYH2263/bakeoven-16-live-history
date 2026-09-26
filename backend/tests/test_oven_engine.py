@@ -4,6 +4,7 @@ from app.services.oven_engine import (
     RecipeDurations,
     build_occupancies,
     find_conflicts,
+    find_pairwise_overlaps,
     next_free_window,
 )
 
@@ -37,3 +38,29 @@ def test_next_free_in_gap():
     ]
     w = next_free_window(existing, 1, duration=30, search_from=0)
     assert w == Interval(20, 50)
+
+
+def test_pairwise_overlap_between_batches():
+    occs = build_occupancies(1, 1, 0, RecipeDurations(20, 30)) + build_occupancies(
+        1, 2, 25, RecipeDurations(20, 30)
+    )
+    hits = find_pairwise_overlaps(occs)
+    phases = {(a.phase, b.phase) for a, b in hits}
+    assert ("bake", "ferment") in phases
+    assert all(a.batch_id != b.batch_id for a, b in hits)
+
+
+def test_pairwise_touching_endpoints_no_overlap():
+    occs = build_occupancies(1, 1, 0, RecipeDurations(20, 30)) + build_occupancies(
+        1, 2, 50, RecipeDurations(20, 30)
+    )
+    assert find_pairwise_overlaps(occs) == []
+
+
+def test_pairwise_ignores_same_batch_and_other_ovens():
+    same_batch = build_occupancies(1, 1, 0, RecipeDurations(20, 30))
+    assert find_pairwise_overlaps(same_batch) == []
+    other_oven = build_occupancies(1, 1, 0, RecipeDurations(20, 30)) + build_occupancies(
+        2, 2, 10, RecipeDurations(20, 30)
+    )
+    assert find_pairwise_overlaps(other_oven) == []

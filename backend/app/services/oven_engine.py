@@ -57,6 +57,18 @@ def find_conflicts(existing: list[Occupancy], candidates: list[Occupancy]) -> li
     return hits
 
 
+def find_pairwise_overlaps(occupancies: list[Occupancy]) -> list[tuple[Occupancy, Occupancy]]:
+    """Overlapping occupancy pairs across distinct batches (half-open, same oven)."""
+    hits: list[tuple[Occupancy, Occupancy]] = []
+    for i, a in enumerate(occupancies):
+        for b in occupancies[i + 1:]:
+            if a.batch_id == b.batch_id or a.oven_id != b.oven_id:
+                continue
+            if a.interval.overlaps(b.interval):
+                hits.append((a, b))
+    return hits
+
+
 def next_free_window(
     existing: list[Occupancy],
     oven_id: int,

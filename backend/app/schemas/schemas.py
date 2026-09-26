@@ -48,6 +48,21 @@ class GanttBlock(BaseModel):
     end_min: int
 
 
+class OverlapPairOut(BaseModel):
+    oven_id: int
+    oven_label: str
+    batch_a_id: int
+    batch_a_code: str
+    batch_b_id: int
+    batch_b_code: str
+    phase_a: str
+    phase_b: str
+    a_start: int
+    a_end: int
+    b_start: int
+    b_end: int
+
+
 class ConflictOut(BaseModel):
     id: int
     batch_code: str

@@ -10,6 +10,7 @@ from app.schemas.schemas import (
     ConflictOut,
     GanttBlock,
     OvenOut,
+    OverlapPairOut,
     ProductOut,
     WindowOut,
 )
@@ -18,6 +19,7 @@ from app.services.oven_engine import (
     RecipeDurations,
     build_occupancies,
     find_conflicts,
+    find_pairwise_overlaps,
     next_free_window,
 )
 
@@ -28,10 +30,16 @@ def _recipe(p: Product) -> RecipeDurations:
     return RecipeDurations(p.ferment_min, p.bake_min)
 
 
-def _all_occupancies(db: Session) -> list[Occupancy]:
-    batches = db.scalars(select(Batch)).all()
+def _scheduled_batches(db: Session) -> list[Batch]:
+    """Batches still on the schedule — the only ones that occupy an oven."""
+    return list(
+        db.scalars(select(Batch).where(Batch.status == "scheduled").order_by(Batch.start_min)).all()
+    )
+
+
+def _scheduled_occupancies(db: Session) -> list[Occupancy]:
     out: list[Occupancy] = []
-    for b in batches:
+    for b in _scheduled_batches(db):
         p = db.get(Product, b.product_id)
         if not p:
             continue
@@ -87,7 +95,7 @@ def create_batch(body: BatchCreate, db: Session = Depends(get_db)):
         raise HTTPException(404, "产品或炉位不存在")
     recipe = _recipe(product)
     candidates = build_occupancies(oven.id, -1, body.start_min, recipe)
-    existing = _all_occupancies(db)
+    existing = _scheduled_occupancies(db)
     hits = find_conflicts(existing, candidates)
     code = body.code or f"BO-{body.start_min}"
     if hits:
@@ -114,7 +122,7 @@ def create_batch(body: BatchCreate, db: Session = Depends(get_db)):
 @api_router.get("/gantt", response_model=list[GanttBlock])
 def gantt(db: Session = Depends(get_db)):
     blocks: list[GanttBlock] = []
-    for b in db.scalars(select(Batch).order_by(Batch.start_min)).all():
+    for b in _scheduled_batches(db):
         p = db.get(Product, b.product_id)
         o = db.get(Oven, b.oven_id)
         if not p or not o:
@@ -134,8 +142,43 @@ def gantt(db: Session = Depends(get_db)):
     return blocks
 
 
+@api_router.get("/conflicts/current", response_model=list[OverlapPairOut])
+def conflicts_current(db: Session = Depends(get_db)):
+    """Live overlap pairs among still-scheduled batches (half-open intervals)."""
+    batches = _scheduled_batches(db)
+    codes = {b.id: b.code for b in batches}
+    labels = {o.id: o.label for o in db.scalars(select(Oven)).all()}
+    occs: list[Occupancy] = []
+    for b in batches:
+        p = db.get(Product, b.product_id)
+        if not p:
+            continue
+        occs.extend(build_occupancies(b.oven_id, b.id, b.start_min, _recipe(p)))
+    out: list[OverlapPairOut] = []
+    for a, b in find_pairwise_overlaps(occs):
+        out.append(
+            OverlapPairOut(
+                oven_id=a.oven_id,
+                oven_label=labels.get(a.oven_id, ""),
+                batch_a_id=a.batch_id,
+                batch_a_code=codes.get(a.batch_id, ""),
+                batch_b_id=b.batch_id,
+                batch_b_code=codes.get(b.batch_id, ""),
+                phase_a=a.phase,
+                phase_b=b.phase,
+                a_start=a.interval.start,
+                a_end=a.interval.end,
+                b_start=b.interval.start,
+                b_end=b.interval.end,
+            )
+        )
+    out.sort(key=lambda r: (r.oven_id, max(r.a_start, r.b_start), r.batch_a_id, r.batch_b_id))
+    return out
+
+
 @api_router.get("/conflicts", response_model=list[ConflictOut])
 def conflicts(db: Session = Depends(get_db)):
+    """Historical rejection log — record only, never blocks ovens or enters the gantt."""
     return db.scalars(select(ConflictLog).order_by(ConflictLog.id.desc())).all()
 
 
@@ -145,7 +188,7 @@ def windows(product_id: int, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(404, "产品不存在")
     duration = product.ferment_min + product.bake_min
-    existing = _all_occupancies(db)
+    existing = _scheduled_occupancies(db)
     out: list[WindowOut] = []
     for oven in db.scalars(select(Oven).order_by(Oven.id)).all():
         w = next_free_window(existing, oven.id, duration, search_from=8 * 60, search_to=22 * 60)
