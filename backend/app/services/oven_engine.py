@@ -11,6 +11,9 @@ class Interval:
     end: int  # exclusive
 
     def overlaps(self, other: "Interval") -> bool:
+        # Empty half-open interval [x, x) is the empty set: intersects nothing.
+        if self.start >= self.end or other.start >= other.end:
+            return False
         return self.start < other.end and other.start < self.end
 
 
@@ -54,6 +57,21 @@ def find_conflicts(existing: list[Occupancy], candidates: list[Occupancy]) -> li
                 continue
             if ex.interval.overlaps(cand.interval):
                 hits.append((ex, cand))
+    return hits
+
+
+def find_overlapping_pairs(occupancies: list[Occupancy]) -> list[tuple[Occupancy, Occupancy]]:
+    """All unordered same-oven overlapping pairs, each reported once.
+
+    Half-open intervals: batches merely touching at endpoints do not pair.
+    """
+    hits: list[tuple[Occupancy, Occupancy]] = []
+    for i, a in enumerate(occupancies):
+        for b in occupancies[i + 1 :]:
+            if a.oven_id != b.oven_id or a.batch_id == b.batch_id:
+                continue
+            if a.interval.overlaps(b.interval):
+                hits.append((a, b))
     return hits
 
 

@@ -57,6 +57,21 @@ class ConflictOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OverlapSide(BaseModel):
+    batch_id: int
+    code: str
+    phase: str
+    start_min: int
+    end_min: int
+
+
+class OverlapPairOut(BaseModel):
+    oven_id: int
+    oven_label: str
+    a: OverlapSide
+    b: OverlapSide
+
+
 class WindowOut(BaseModel):
     oven_id: int
     oven_label: str

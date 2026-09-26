@@ -10,6 +10,8 @@ from app.schemas.schemas import (
     ConflictOut,
     GanttBlock,
     OvenOut,
+    OverlapPairOut,
+    OverlapSide,
     ProductOut,
     WindowOut,
 )
@@ -18,6 +20,7 @@ from app.services.oven_engine import (
     RecipeDurations,
     build_occupancies,
     find_conflicts,
+    find_overlapping_pairs,
     next_free_window,
 )
 
@@ -28,10 +31,16 @@ def _recipe(p: Product) -> RecipeDurations:
     return RecipeDurations(p.ferment_min, p.bake_min)
 
 
+def _scheduled_batches(db: Session) -> list[Batch]:
+    """Batches still occupying ovens — the only ones that block or render."""
+    return db.scalars(
+        select(Batch).where(Batch.status == "scheduled").order_by(Batch.start_min)
+    ).all()
+
+
 def _all_occupancies(db: Session) -> list[Occupancy]:
-    batches = db.scalars(select(Batch)).all()
     out: list[Occupancy] = []
-    for b in batches:
+    for b in _scheduled_batches(db):
         p = db.get(Product, b.product_id)
         if not p:
             continue
@@ -114,7 +123,7 @@ def create_batch(body: BatchCreate, db: Session = Depends(get_db)):
 @api_router.get("/gantt", response_model=list[GanttBlock])
 def gantt(db: Session = Depends(get_db)):
     blocks: list[GanttBlock] = []
-    for b in db.scalars(select(Batch).order_by(Batch.start_min)).all():
+    for b in _scheduled_batches(db):
         p = db.get(Product, b.product_id)
         o = db.get(Oven, b.oven_id)
         if not p or not o:
@@ -134,8 +143,41 @@ def gantt(db: Session = Depends(get_db)):
     return blocks
 
 
+@api_router.get("/conflicts/current", response_model=list[OverlapPairOut])
+def conflicts_current(db: Session = Depends(get_db)):
+    """Live overlapping pairs among scheduled batches (half-open intervals)."""
+    batches = _scheduled_batches(db)
+    codes = {b.id: b.code for b in batches}
+    occupancies = _all_occupancies(db)
+    labels = {o.id: o.label for o in db.scalars(select(Oven)).all()}
+    out: list[OverlapPairOut] = []
+    for x, y in find_overlapping_pairs(occupancies):
+        out.append(
+            OverlapPairOut(
+                oven_id=x.oven_id,
+                oven_label=labels.get(x.oven_id, ""),
+                a=OverlapSide(
+                    batch_id=x.batch_id,
+                    code=codes.get(x.batch_id, "?"),
+                    phase=x.phase,
+                    start_min=x.interval.start,
+                    end_min=x.interval.end,
+                ),
+                b=OverlapSide(
+                    batch_id=y.batch_id,
+                    code=codes.get(y.batch_id, "?"),
+                    phase=y.phase,
+                    start_min=y.interval.start,
+                    end_min=y.interval.end,
+                ),
+            )
+        )
+    return out
+
+
 @api_router.get("/conflicts", response_model=list[ConflictOut])
 def conflicts(db: Session = Depends(get_db)):
+    """Rejected creation attempts — history only, never blocks ovens."""
     return db.scalars(select(ConflictLog).order_by(ConflictLog.id.desc())).all()
 
 

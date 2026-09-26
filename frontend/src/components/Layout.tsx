@@ -12,7 +12,12 @@ const drawerLinks = [
 ];
 
 type Oven = { id: number; label: string; capacity_note: string };
-type Conflict = { id: number; batch_code: string; oven_id: number; detail: string; created_at: string };
+type OverlapPair = {
+  oven_id: number;
+  oven_label: string;
+  a: { code: string; phase: string };
+  b: { code: string; phase: string };
+};
 type Block = {
   batch_id: number;
   code: string;
@@ -27,12 +32,12 @@ export default function Layout() {
   const loc = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [ovens, setOvens] = useState<Oven[]>([]);
-  const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [overlaps, setOverlaps] = useState<OverlapPair[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
 
   useEffect(() => {
     api<Oven[]>("/ovens").then(setOvens).catch(() => setOvens([]));
-    api<Conflict[]>("/conflicts").then((c) => setConflicts(c.slice(0, 6))).catch(() => setConflicts([]));
+    api<OverlapPair[]>("/conflicts/current").then((c) => setOverlaps(c.slice(0, 6))).catch(() => setOverlaps([]));
     api<Block[]>("/gantt").then(setBlocks).catch(() => setBlocks([]));
   }, [loc.pathname]);
 
@@ -107,18 +112,18 @@ export default function Layout() {
         </section>
 
         <div className="conflict-badge-float" aria-label="冲突角标">
-          {conflicts.length === 0 && (
+          {overlaps.length === 0 && (
             <span className="conflict-chip conflict-chip--ok">无冲突</span>
           )}
-          {conflicts.map((c) => (
+          {overlaps.map((p, i) => (
             <NavLink
-              key={c.id}
+              key={i}
               to="/conflicts"
               className="conflict-chip"
-              title={c.detail}
+              title={`${p.oven_label} 当前重叠`}
             >
-              <span className="conflict-chip-code">{c.batch_code}</span>
-              <span className="conflict-chip-detail">{c.detail}</span>
+              <span className="conflict-chip-code">{p.a.code} × {p.b.code}</span>
+              <span className="conflict-chip-detail">{p.oven_label} · 当前重叠</span>
             </NavLink>
           ))}
         </div>

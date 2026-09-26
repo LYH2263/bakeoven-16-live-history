@@ -299,3 +299,54 @@ select, input, .gantt-deck button, .toolbar button {
   justify-content: space-between;
   font-family: "IBM Plex Mono", monospace;
 }
+
+/* —— Conflicts: live overlap pairs | rejection history —— */
+.conflict-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .conflict-cols { grid-template-columns: 1fr; }
+}
+.conflict-cols h3 {
+  margin: 0 0 .75rem;
+  font-size: .85rem;
+  color: var(--bake-muted);
+  letter-spacing: .05em;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: .45rem;
+}
+.overlap-pair {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--bake-ember);
+  border-radius: 4px;
+  padding: .55rem .8rem;
+  margin-bottom: .6rem;
+}
+.overlap-pair:hover { border-color: var(--bake-ember); }
+.overlap-pair-oven {
+  font-size: .68rem;
+  color: var(--bake-muted);
+  margin-bottom: .35rem;
+  letter-spacing: .08em;
+}
+.overlap-side {
+  display: flex;
+  gap: .55rem;
+  align-items: center;
+  font-size: .85rem;
+  padding: .12rem 0;
+}
+.overlap-code { font-weight: 700; color: var(--bake-copper); }
+.phase-tag {
+  font-size: .65rem;
+  padding: .08rem .4rem;
+  border-radius: 3px;
+  color: #fff;
+}
+.phase-tag.ferment { background: var(--ferment); }
+.phase-tag.bake { background: var(--bake); }
